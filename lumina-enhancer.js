@@ -177,8 +177,35 @@ async function bootstrap() {
     Lampa.Log && Lampa.Log('[' + PLUGIN_NAME + '] v' + VERSION + ' Loaded');
 }
 
-if (document.readyState === 'complete') bootstrap();
-else window.addEventListener('load', bootstrap);
+// Lampa APIs are not ready at window.load. Wait for the app's own ready event.
+let luminaBootstrapStarted = false;
+function startLuminaWhenReady() {
+    if (luminaBootstrapStarted) return;
+    luminaBootstrapStarted = true;
+    bootstrap().catch(function (err) {
+        luminaBootstrapStarted = false;
+        console.error('[LUMINA] Bootstrap failed:', err);
+        if (window.Lampa && Lampa.Noty && Lampa.Noty.show) Lampa.Noty.show('LUMINA: ошибка запуска плагина');
+    });
+}
+
+if (window.appready) {
+    startLuminaWhenReady();
+} else if (window.Lampa && Lampa.Listener && typeof Lampa.Listener.follow === 'function') {
+    Lampa.Listener.follow('app', function (event) {
+        if (event && event.type === 'ready') startLuminaWhenReady();
+    });
+} else {
+    // Fallback for forks that do not expose the app event bus immediately.
+    window.addEventListener('load', function () {
+        if (window.appready) startLuminaWhenReady();
+        else if (window.Lampa && Lampa.Listener && typeof Lampa.Listener.follow === 'function') {
+            Lampa.Listener.follow('app', function (event) {
+                if (event && event.type === 'ready') startLuminaWhenReady();
+            });
+        }
+    });
+}
 
 // ============================================================================
 // MODULE DEFINITIONS (Bundled for single-file deployment)
