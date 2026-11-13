@@ -139,22 +139,20 @@ async function bootstrap() {
         console.warn('[LUMINA] Player hooks unavailable:', hookError);
     }
 
-    // Register in Lampa's supported Settings API and main sidebar.
+    // Register in SettingsApi, then add a visible item to the actual Lampa sidebar.
     try {
         if (Lampa.SettingsApi && typeof Lampa.SettingsApi.addComponent === 'function') {
             Lampa.SettingsApi.addComponent({
                 component: PLUGIN_ID,
                 name: PLUGIN_NAME,
-                icon: '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2l2.2 6.8L21 11l-6.8 2.2L12 20l-2.2-6.8L3 11l6.8-2.2L12 2z"/></svg>'
+                icon: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M12 2l2.2 6.8L21 11l-6.8 2.2L12 20l-2.2-6.8L3 11l6.8-2.2L12 2z"/></svg>'
             });
             if (typeof Lampa.SettingsApi.addParam === 'function') {
                 Lampa.SettingsApi.addParam({
                     component: PLUGIN_ID,
                     param: { name: 'lumina_open_panel', type: 'button' },
                     field: { name: 'Открыть LUMINA VIDEO ENHANCER PRO', description: 'Настройки изображения и видеоэффектов' },
-                    onRender: function (item) {
-                        item.on('hover:enter click', openLuminaPanel);
-                    }
+                    onRender: function (item) { item.on('hover:enter click', openLuminaPanel); }
                 });
             }
         }
@@ -162,17 +160,53 @@ async function bootstrap() {
         console.error('[LUMINA] Settings API registration failed:', settingsError);
     }
 
-    try {
-        if (Lampa.Menu && typeof Lampa.Menu.addButton === 'function') {
-            Lampa.Menu.addButton(
-                '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2l2.2 6.8L21 11l-6.8 2.2L12 20l-2.2-6.8L3 11l6.8-2.2L12 2z"/></svg>',
-                PLUGIN_NAME,
-                openLuminaPanel
-            );
+    function addLuminaMenuItem() {
+        var icon = '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M12 2l2.2 6.8L21 11l-6.8 2.2L12 20l-2.2-6.8L3 11l6.8-2.2L12 2z"/></svg>';
+        function exists() {
+            var found = false;
+            if (typeof window.$ === 'function') {
+                window.$('.menu__text').each(function () {
+                    if (String(window.$(this).text()).trim() === PLUGIN_NAME) found = true;
+                });
+            }
+            return found;
         }
-    } catch (menuError) {
-        console.warn('[LUMINA] Sidebar button unavailable:', menuError);
+        function insertDom() {
+            if (exists()) return true;
+            if (typeof window.$ !== 'function') return false;
+            var list = window.$('.menu .menu__list').eq(0);
+            if (!list.length) list = window.$('.menu__list').eq(0);
+            if (!list.length) return false;
+            var li = window.$('<li class="menu__item selector"><div class="menu__ico"></div><div class="menu__text"></div></li>');
+            li.find('.menu__ico').html(icon);
+            li.find('.menu__text').text(PLUGIN_NAME);
+            li.on('hover:enter', openLuminaPanel);
+            li.on('click', openLuminaPanel);
+            list.append(li);
+            console.log('[LUMINA] Menu item inserted');
+            return true;
+        }
+        try {
+            if (Lampa.Menu && typeof Lampa.Menu.addButton === 'function') {
+                Lampa.Menu.addButton(icon, PLUGIN_NAME, openLuminaPanel);
+                if (exists()) return;
+            }
+        } catch (e) { console.warn('[LUMINA] Menu API failed, using DOM fallback', e); }
+        if (insertDom()) return;
+        var attempts = 0;
+        var timer = setInterval(function () {
+            attempts++;
+            if (insertDom() || attempts >= 60) clearInterval(timer);
+        }, 500);
+        if (typeof MutationObserver !== 'undefined' && document.documentElement) {
+            var observer = new MutationObserver(function () {
+                if (insertDom()) { observer.disconnect(); clearInterval(timer); }
+            });
+            observer.observe(document.documentElement, { childList: true, subtree: true });
+            setTimeout(function () { try { observer.disconnect(); } catch (e) {} }, 30000);
+        }
     }
+    addLuminaMenuItem();
 
     Lampa.Log && Lampa.Log('[' + PLUGIN_NAME + '] v' + VERSION + ' Loaded');
 }
