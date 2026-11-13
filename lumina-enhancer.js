@@ -100,23 +100,81 @@ async function bootstrap() {
     window.LuminaCore = new LuminaCore();
     await window.LuminaCore.init();
 
-    // Register Lampa Plugin Hooks
-    Lampa.Plugin.add(PLUGIN_ID, {
-        start: () => {},
-        player: (player) => window.LuminaCore.attachPlayer(player),
-        render: () => window.LuminaCore.onRender(),
-        destroy: () => window.LuminaCore.destroy()
-    });
+    // Register a real Lampa entry point. Do not rely on the non-standard
+    // Lampa.Plugin / Lampa.Settings APIs: many Lampa builds do not expose them.
+    function openLuminaPanel() {
+        try {
+            const container = window.LuminaCore.ui.renderSettings();
+            if (Lampa.Modal && typeof Lampa.Modal.open === 'function') {
+                Lampa.Modal.open({ title: PLUGIN_NAME, content: container, size: 'large' });
+            } else {
+                const wrap = document.createElement('div');
+                wrap.style.cssText = 'position:fixed;inset:3%;z-index:999999;background:#080810;overflow:auto;padding:12px;';
+                const close = document.createElement('button');
+                close.textContent = '✕ Закрыть';
+                close.style.cssText = 'position:sticky;top:0;z-index:2;padding:10px 18px;margin-bottom:10px;';
+                close.addEventListener('click', function () { wrap.remove(); });
+                wrap.appendChild(close);
+                wrap.appendChild(container);
+                document.body.appendChild(wrap);
+            }
+        } catch (err) {
+            console.error('[LUMINA] Не удалось открыть панель', err);
+            if (Lampa.Noty && Lampa.Noty.show) Lampa.Noty.show('LUMINA: ошибка открытия панели');
+        }
+    }
 
-    // Add to Settings Menu
-    Lampa.Settings.add({
-        component: 'video',
-        name: PLUGIN_NAME,
-        icon: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>',
-        render: () => window.LuminaCore.ui.renderSettings()
-    });
+    // The player hook is optional; the panel must remain available even
+    // on Lampa forks that do not implement Lampa.Plugin.
+    try {
+        if (Lampa.Plugin && typeof Lampa.Plugin.add === 'function') {
+            Lampa.Plugin.add(PLUGIN_ID, {
+                start: function () {},
+                player: function (player) { return window.LuminaCore.attachPlayer(player); },
+                render: function () { return window.LuminaCore.onRender(); },
+                destroy: function () { return window.LuminaCore.destroy(); }
+            });
+        }
+    } catch (hookError) {
+        console.warn('[LUMINA] Player hooks unavailable:', hookError);
+    }
 
-    Lampa.Log(`[${PLUGIN_NAME}] v${VERSION} Loaded`);
+    // Register in Lampa's supported Settings API and main sidebar.
+    try {
+        if (Lampa.SettingsApi && typeof Lampa.SettingsApi.addComponent === 'function') {
+            Lampa.SettingsApi.addComponent({
+                component: PLUGIN_ID,
+                name: PLUGIN_NAME,
+                icon: '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2l2.2 6.8L21 11l-6.8 2.2L12 20l-2.2-6.8L3 11l6.8-2.2L12 2z"/></svg>'
+            });
+            if (typeof Lampa.SettingsApi.addParam === 'function') {
+                Lampa.SettingsApi.addParam({
+                    component: PLUGIN_ID,
+                    param: { name: 'lumina_open_panel', type: 'button' },
+                    field: { name: 'Открыть LUMINA VIDEO ENHANCER PRO', description: 'Настройки изображения и видеоэффектов' },
+                    onRender: function (item) {
+                        item.on('hover:enter click', openLuminaPanel);
+                    }
+                });
+            }
+        }
+    } catch (settingsError) {
+        console.error('[LUMINA] Settings API registration failed:', settingsError);
+    }
+
+    try {
+        if (Lampa.Menu && typeof Lampa.Menu.addButton === 'function') {
+            Lampa.Menu.addButton(
+                '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2l2.2 6.8L21 11l-6.8 2.2L12 20l-2.2-6.8L3 11l6.8-2.2L12 2z"/></svg>',
+                PLUGIN_NAME,
+                openLuminaPanel
+            );
+        }
+    } catch (menuError) {
+        console.warn('[LUMINA] Sidebar button unavailable:', menuError);
+    }
+
+    Lampa.Log && Lampa.Log('[' + PLUGIN_NAME + '] v' + VERSION + ' Loaded');
 }
 
 if (document.readyState === 'complete') bootstrap();
